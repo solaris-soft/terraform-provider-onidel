@@ -1,0 +1,8 @@
+/terraform-provider-onidel
+/dist/
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfplan
+crash.log
+.env
