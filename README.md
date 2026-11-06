@@ -12,7 +12,7 @@ This initial provider does **not** manage SSH keys, VPCs, firewalls, images, or 
 
 ## Build and use locally
 
-Requires Go 1.24+ and Terraform 1.8+.
+Requires Go 1.26+ and Terraform 1.8+. Use a patched Go toolchain; CI and releases use Go 1.27.3.
 
 ```sh
 go mod download
@@ -98,6 +98,10 @@ go vet ./...
 ```
 
 See [`docs/`](docs/) for provider, resource, and data-source references, and [`examples/`](examples/) for configuration samples.
+
+## Publishing
+
+See [PUBLISHING.md](PUBLISHING.md) for the release checklist and required GitHub/HCP Terraform account setup. Tagged releases run tests, build platform ZIPs, and publish GPG-signed checksums plus a protocol-6 Registry manifest. Publishing still requires registering the signing key and selecting the repository in the claimed public namespace; CI alone does not list the provider in the Registry.
 
 ## Design references
 
