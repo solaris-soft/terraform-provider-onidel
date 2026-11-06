@@ -42,6 +42,8 @@ resource "onidel_virtual_machine" "example" {
 | `ipv6` | Enable IPv6 at provisioning time. Default `false`. |
 | `disable_ssh_blocking` | Permit outgoing SSH at provisioning time. Default `false`. |
 | `startup_script_id` | Optional existing startup script UUID; applies to OS/snapshot deployments. |
+| `create_timeout` | Maximum provisioning duration as a Go duration string, e.g. `20m` (default). Changing this does not replace the VM. |
+| `update_timeout` | Maximum rename-confirmation duration as a Go duration string, default `5m`. Changing this does not replace the VM. |
 
 Use either an OS template, a snapshot, or an ISO, not multiple image sources. Changes to replacement-only fields destroy and recreate the VM; disks and data may be lost. The API does not report every provisioning input, so create-only values cannot all be refreshed from remote state.
 

@@ -128,12 +128,15 @@ resource "onidel_virtual_machine" "test" {
             )
             tf("apply", "-auto-approve", "-input=false")
             (work / "lookup.tf").unlink()
+            tf("state", "rm", "onidel_virtual_machine.test")
+            tf("import", "-input=false", "onidel_virtual_machine.test", VM_ID)
+            assert VM_ID in tf("state", "show", "onidel_virtual_machine.test")
             tf("destroy", "-auto-approve", "-input=false")
             assert remote["vm"] is None
             assert sum(method == "POST" for method, _ in remote["calls"]) == 1
             assert sum(method == "PATCH" for method, _ in remote["calls"]) == 1
             assert sum(method == "DELETE" for method, _ in remote["calls"]) == 1
-            print("Terraform smoke test passed: create, no-op plan, rename, lookup, destroy.")
+            print("Terraform smoke test passed: create, no-op plan, rename, lookup, import, destroy.")
     finally:
         server.shutdown()
         server.server_close()

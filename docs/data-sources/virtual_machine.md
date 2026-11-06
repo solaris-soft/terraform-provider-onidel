@@ -24,6 +24,6 @@ output "ipv4" {
 
 ## Returned attributes
 
-The VM's name, password (sensitive), CPU/memory/disk sizes, primary IPv4/IPv6 addresses, OS template, boot mode, firewall group, and status. See `terraform providers schema -json` for exact field names.
+`name`, `password` (sensitive), `cpu`, `ram`, `disk`, `main_ipv4`, `main_ipv6`, `template`, `boot_mode`, `firewall_group_id`, and `status`.
 
 The password may be stored in Terraform state even though display is redacted. Protect your state accordingly.
