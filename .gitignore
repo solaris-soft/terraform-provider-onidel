@@ -6,3 +6,5 @@
 *.tfplan
 crash.log
 .env
+__pycache__/
+*.pyc
