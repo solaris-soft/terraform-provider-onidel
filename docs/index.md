@@ -5,9 +5,21 @@ description: "Manage Onidel Cloud virtual machines with Terraform."
 
 # Onidel Provider
 
-The Onidel provider manages virtual machines through the Onidel Cloud API.
+The Onidel provider manages virtual machines through the [Onidel Cloud API](https://developers.onidel.com). This is a community provider maintained by Solaris Soft, not an official Onidel or HashiCorp product.
+
+## Example Usage
+
+Set `ONIDEL_API_TOKEN` to an API token from your [Onidel account settings](https://cloud.onidel.com/account/settings).
 
 ```hcl
+terraform {
+  required_providers {
+    onidel = {
+      source = "solaris-soft/onidel"
+    }
+  }
+}
+
 provider "onidel" {
   # Prefer ONIDEL_API_TOKEN in the environment.
   # team_id = "your-team-uuid"
@@ -24,6 +36,6 @@ provider "onidel" {
 
 A resource or data source can override the provider's default team using its `team_id` attribute.
 
-See the repository README for local installation. This community provider is not automatically published to the Terraform Registry by creating the GitHub repository.
+After the provider is published, install it with `terraform init`. For unreleased development builds, follow the [repository's local installation instructions](https://github.com/solaris-soft/terraform-provider-onidel#build-and-use-locally) instead.
 
 > Sensitive values may be stored in Terraform state. Protect state and never commit credentials.
