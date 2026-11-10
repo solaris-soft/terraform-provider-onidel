@@ -24,6 +24,10 @@ output "ipv4" {
 
 ## Returned attributes
 
-`name`, `password` (sensitive), `cpu`, `ram`, `disk`, `main_ipv4`, `main_ipv6`, `template`, `boot_mode`, `firewall_group_id`, and `status`.
+`name`, `password` (sensitive), `cpu`, `ram`, `disk`, `main_ipv4`, `main_ipv6`, `template`, `boot_mode`, `firewall_group_id`, `firewall_group_internal_id`, and `status`.
+
+When the API reports a numeric firewall database ID instead of a UUID, the
+number is exposed as `firewall_group_internal_id` and `firewall_group_id` is
+null. The data source does not guess the corresponding public UUID.
 
 The password may be stored in Terraform state even though display is redacted. Protect your state accordingly.

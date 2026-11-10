@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"time"
 
@@ -40,32 +41,33 @@ var (
 )
 
 type vmModel struct {
-	ID                 types.String `tfsdk:"id"`
-	Name               types.String `tfsdk:"name"`
-	PaymentCycle       types.String `tfsdk:"payment_cycle"`
-	InstanceType       types.String `tfsdk:"instance_type"`
-	Location           types.String `tfsdk:"location"`
-	CPU                types.Int64  `tfsdk:"cpu"`
-	RAM                types.Int64  `tfsdk:"ram"`
-	Disk               types.Int64  `tfsdk:"disk"`
-	OS                 types.Int64  `tfsdk:"os"`
-	SnapshotID         types.String `tfsdk:"snapshot_id"`
-	ISOID              types.String `tfsdk:"iso_id"`
-	BootMode           types.String `tfsdk:"boot_mode"`
-	TeamID             types.String `tfsdk:"team_id"`
-	SSHKeys            types.Set    `tfsdk:"ssh_keys"`
-	VPCs               types.Set    `tfsdk:"vpcs"`
-	FirewallGroupID    types.String `tfsdk:"firewall_group_id"`
-	IPv6               types.Bool   `tfsdk:"ipv6"`
-	DisableSSHBlocking types.Bool   `tfsdk:"disable_ssh_blocking"`
-	StartupScriptID    types.String `tfsdk:"startup_script_id"`
-	Password           types.String `tfsdk:"password"`
-	MainIPv4           types.String `tfsdk:"main_ipv4"`
-	MainIPv6           types.String `tfsdk:"main_ipv6"`
-	Template           types.String `tfsdk:"template"`
-	Status             types.String `tfsdk:"status"`
-	CreateTimeout      types.String `tfsdk:"create_timeout"`
-	UpdateTimeout      types.String `tfsdk:"update_timeout"`
+	ID                      types.String `tfsdk:"id"`
+	Name                    types.String `tfsdk:"name"`
+	PaymentCycle            types.String `tfsdk:"payment_cycle"`
+	InstanceType            types.String `tfsdk:"instance_type"`
+	Location                types.String `tfsdk:"location"`
+	CPU                     types.Int64  `tfsdk:"cpu"`
+	RAM                     types.Int64  `tfsdk:"ram"`
+	Disk                    types.Int64  `tfsdk:"disk"`
+	OS                      types.Int64  `tfsdk:"os"`
+	SnapshotID              types.String `tfsdk:"snapshot_id"`
+	ISOID                   types.String `tfsdk:"iso_id"`
+	BootMode                types.String `tfsdk:"boot_mode"`
+	TeamID                  types.String `tfsdk:"team_id"`
+	SSHKeys                 types.Set    `tfsdk:"ssh_keys"`
+	VPCs                    types.Set    `tfsdk:"vpcs"`
+	FirewallGroupID         types.String `tfsdk:"firewall_group_id"`
+	FirewallGroupInternalID types.Int64  `tfsdk:"firewall_group_internal_id"`
+	IPv6                    types.Bool   `tfsdk:"ipv6"`
+	DisableSSHBlocking      types.Bool   `tfsdk:"disable_ssh_blocking"`
+	StartupScriptID         types.String `tfsdk:"startup_script_id"`
+	Password                types.String `tfsdk:"password"`
+	MainIPv4                types.String `tfsdk:"main_ipv4"`
+	MainIPv6                types.String `tfsdk:"main_ipv6"`
+	Template                types.String `tfsdk:"template"`
+	Status                  types.String `tfsdk:"status"`
+	CreateTimeout           types.String `tfsdk:"create_timeout"`
+	UpdateTimeout           types.String `tfsdk:"update_timeout"`
 }
 
 func NewVirtualMachineResource() resource.Resource { return &virtualMachineResource{} }
@@ -93,24 +95,25 @@ func (r *virtualMachineResource) Schema(_ context.Context, _ resource.SchemaRequ
 		"instance_type": schema.StringAttribute{Required: true, Description: "Instance type UUID.", Validators: uuidValidators(), PlanModifiers: replaceString},
 		"location":      schema.StringAttribute{Required: true, Description: "Deployment location.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}, PlanModifiers: replaceString},
 		"cpu":           positive("Number of virtual CPUs."), "ram": positive("RAM in MB."), "disk": positive("Disk size in GB."),
-		"os":                   schema.Int64Attribute{Optional: true, Description: "OS template ID. Exactly one of os, snapshot_id, iso_id is required.", Validators: []validator.Int64{int64validator.AtLeast(1)}, PlanModifiers: []planmodifier.Int64{int64planmodifier.RequiresReplace()}},
-		"snapshot_id":          optionalUUID("Snapshot UUID to restore. Mutually exclusive with os and iso_id."),
-		"iso_id":               optionalUUID("ISO UUID to boot. Mutually exclusive with os and snapshot_id."),
-		"boot_mode":            schema.StringAttribute{Optional: true, Computed: true, Description: "Firmware mode: bios or uefi. Omit to use the API default.", Validators: []validator.String{stringvalidator.OneOf("bios", "uefi")}, PlanModifiers: replaceConfigured},
-		"team_id":              schema.StringAttribute{Optional: true, Computed: true, Description: "Team UUID. Defaults to the provider team, or empty for the account default.", Validators: uuidValidators(), PlanModifiers: replaceConfigured},
-		"ssh_keys":             uuidSet("SSH key UUIDs installed during provisioning. Retained on refresh."),
-		"vpcs":                 uuidSet("VPC UUIDs attached during provisioning. Retained on refresh."),
-		"firewall_group_id":    schema.StringAttribute{Optional: true, Computed: true, Description: "Attached firewall group UUID, or null when detached.", Validators: uuidValidators(), PlanModifiers: replaceConfigured},
-		"ipv6":                 schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(false), Description: "Enable IPv6 at provisioning. Retained on refresh.", PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplace()}},
-		"disable_ssh_blocking": schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(false), Description: "Allow outbound SSH at provisioning. Retained on refresh.", PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplace()}},
-		"startup_script_id":    optionalUUID("Startup script UUID executed on first boot."),
-		"password":             schema.StringAttribute{Computed: true, Sensitive: true, Description: "Generated administrator password. Stored in Terraform state; protect the state backend."},
-		"main_ipv4":            schema.StringAttribute{Computed: true, Description: "Primary IPv4 address."},
-		"main_ipv6":            schema.StringAttribute{Computed: true, Description: "Primary IPv6 address."},
-		"template":             schema.StringAttribute{Computed: true, Description: "OS template display name (not the provisioning OS ID)."},
-		"status":               schema.StringAttribute{Computed: true, Description: "Current API status."},
-		"create_timeout":       schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("20m"), Description: "Maximum duration for provisioning and waiting for active, e.g. 20m. Changing this does not replace the VM.", Validators: []validator.String{durationValidator{}}},
-		"update_timeout":       schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("5m"), Description: "Maximum duration for renaming and waiting for the API to report the new name. Changing this does not replace the VM.", Validators: []validator.String{durationValidator{}}},
+		"os":                         schema.Int64Attribute{Optional: true, Description: "OS template ID. Exactly one of os, snapshot_id, iso_id is required.", Validators: []validator.Int64{int64validator.AtLeast(1)}, PlanModifiers: []planmodifier.Int64{int64planmodifier.RequiresReplace()}},
+		"snapshot_id":                optionalUUID("Snapshot UUID to restore. Mutually exclusive with os and iso_id."),
+		"iso_id":                     optionalUUID("ISO UUID to boot. Mutually exclusive with os and snapshot_id."),
+		"boot_mode":                  schema.StringAttribute{Optional: true, Computed: true, Description: "Firmware mode: bios or uefi. Omit to use the API default.", Validators: []validator.String{stringvalidator.OneOf("bios", "uefi")}, PlanModifiers: replaceConfigured},
+		"team_id":                    schema.StringAttribute{Optional: true, Computed: true, Description: "Team UUID. Defaults to the provider team, or empty for the account default.", Validators: uuidValidators(), PlanModifiers: replaceConfigured},
+		"ssh_keys":                   uuidSet("SSH key UUIDs installed during provisioning. Retained on refresh."),
+		"vpcs":                       uuidSet("VPC UUIDs attached during provisioning. Retained on refresh."),
+		"firewall_group_id":          schema.StringAttribute{Optional: true, Computed: true, Description: "Configured or API-reported firewall group UUID. Retained when the API reports only a numeric internal ID; numeric responses cannot independently verify its UUID mapping.", Validators: uuidValidators(), PlanModifiers: replaceConfigured},
+		"firewall_group_internal_id": schema.Int64Attribute{Computed: true, Description: "Numeric firewall database ID when returned instead of a UUID. Tracked separately to detect changes without confusing it with the configured UUID."},
+		"ipv6":                       schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(false), Description: "Enable IPv6 at provisioning. Retained on refresh.", PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplace()}},
+		"disable_ssh_blocking":       schema.BoolAttribute{Optional: true, Computed: true, Default: booldefault.StaticBool(false), Description: "Allow outbound SSH at provisioning. Retained on refresh.", PlanModifiers: []planmodifier.Bool{boolplanmodifier.RequiresReplace()}},
+		"startup_script_id":          optionalUUID("Startup script UUID executed on first boot."),
+		"password":                   schema.StringAttribute{Computed: true, Sensitive: true, Description: "Generated administrator password. Stored in Terraform state; protect the state backend."},
+		"main_ipv4":                  schema.StringAttribute{Computed: true, Description: "Primary IPv4 address."},
+		"main_ipv6":                  schema.StringAttribute{Computed: true, Description: "Primary IPv6 address."},
+		"template":                   schema.StringAttribute{Computed: true, Description: "OS template display name (not the provisioning OS ID)."},
+		"status":                     schema.StringAttribute{Computed: true, Description: "Current API status."},
+		"create_timeout":             schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("20m"), Description: "Maximum duration for provisioning and waiting for active, e.g. 20m. Changing this does not replace the VM.", Validators: []validator.String{durationValidator{}}},
+		"update_timeout":             schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString("5m"), Description: "Maximum duration for renaming and waiting for the API to report the new name. Changing this does not replace the VM.", Validators: []validator.String{durationValidator{}}},
 	}}
 }
 func (r *virtualMachineResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -203,7 +206,10 @@ func (r *virtualMachineResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.AddError("VM created but provisioning did not complete", "The VM ID has been saved in state. Inspect the VM before retrying; replacement may incur charges. "+err.Error())
 		return
 	}
-	data.refresh(vm)
+	if err := data.refresh(vm); err != nil {
+		resp.Diagnostics.AddError("Unable to verify firewall association", err.Error())
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 func (r *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -221,7 +227,10 @@ func (r *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		resp.Diagnostics.AddError("Unable to read VM", err.Error())
 		return
 	}
-	data.refresh(vm)
+	if err := data.refresh(vm); err != nil {
+		resp.Diagnostics.AddError("Unable to verify firewall association", err.Error())
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 func (r *virtualMachineResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -253,7 +262,10 @@ func (r *virtualMachineResource) Update(ctx context.Context, req resource.Update
 	}
 	prior.CreateTimeout = data.CreateTimeout
 	prior.UpdateTimeout = data.UpdateTimeout
-	prior.refresh(vm)
+	if err := prior.refresh(vm); err != nil {
+		resp.Diagnostics.AddError("Unable to verify firewall association", err.Error())
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &prior)...)
 }
 func (r *virtualMachineResource) waitForName(ctx context.Context, id, teamID, name string) (*client.VM, error) {
@@ -304,8 +316,16 @@ func (m *vmModel) clearUnknownOutputs() {
 			*v = types.StringNull()
 		}
 	}
+	if m.FirewallGroupInternalID.IsUnknown() {
+		m.FirewallGroupInternalID = types.Int64Null()
+	}
 }
-func (m *vmModel) refresh(vm *client.VM) {
+func (m *vmModel) refresh(vm *client.VM) error {
+	if vm.FirewallGroupInternalID != nil && !m.FirewallGroupInternalID.IsNull() &&
+		!m.FirewallGroupInternalID.IsUnknown() && !m.FirewallGroupID.IsNull() &&
+		!m.FirewallGroupID.IsUnknown() && m.FirewallGroupInternalID.ValueInt64() != *vm.FirewallGroupInternalID {
+		return errors.New("onidel: numeric firewall ID changed; inspect the association before reconciling the configured UUID")
+	}
 	// Do not guess unavailable create-only fields (OS ID, billing cycle, location,
 	// instance type, networking inputs, scripts). Only map documented API outputs.
 	if vm.Name != "" {
@@ -323,7 +343,11 @@ func (m *vmModel) refresh(vm *client.VM) {
 	if vm.BootMode != "" {
 		m.BootMode = types.StringValue(vm.BootMode)
 	}
-	m.FirewallGroupID = types.StringPointerValue(vm.FirewallGroupID)
+	// shortcut: the API has no numeric-to-UUID mapping; retain the UUID until it reports one.
+	if vm.FirewallGroupInternalID == nil {
+		m.FirewallGroupID = types.StringPointerValue(vm.FirewallGroupID)
+	}
+	m.FirewallGroupInternalID = types.Int64PointerValue(vm.FirewallGroupInternalID)
 	if vm.Password != "" {
 		m.Password = types.StringValue(vm.Password)
 	}
@@ -331,6 +355,7 @@ func (m *vmModel) refresh(vm *client.VM) {
 	m.MainIPv6 = types.StringValue(vm.MainIPv6)
 	m.Template = types.StringValue(vm.Template)
 	m.Status = types.StringValue(vm.Status)
+	return nil
 }
 
 type durationValidator struct{}

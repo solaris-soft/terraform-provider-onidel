@@ -49,7 +49,14 @@ Use either an OS template, a snapshot, or an ISO, not multiple image sources. Ch
 
 ## Returned attributes
 
-The resource exposes `id`, `password` (sensitive), `main_ipv4`, `main_ipv6`, `template`, and `status`. The `cpu`, `ram`, `disk`, `name`, `boot_mode`, and `firewall_group_id` fields can be refreshed from corresponding API properties where supported. See `terraform providers schema -json` for the authoritative schema.
+The resource exposes `id`, `password` (sensitive), `main_ipv4`, `main_ipv6`, `template`, `status`, and `firewall_group_internal_id`. The `cpu`, `ram`, `disk`, `name`, `boot_mode`, and `firewall_group_id` fields can be refreshed from corresponding API properties where supported. See `terraform providers schema -json` for the authoritative schema.
+
+When Onidel returns a numeric firewall ID, `firewall_group_internal_id` records
+that number and `firewall_group_id` retains its configured UUID. The API does
+not provide an independent mapping between the two. Refresh fails if a numeric
+ID changes while a UUID is retained; inspect the firewall before reconciling
+state. A null association clears both fields. On import, a numeric ID does not
+fabricate a public UUID.
 
 ## Import
 
@@ -61,4 +68,4 @@ For non-default teams, configure provider `team_id` or `ONIDEL_TEAM_ID` first. G
 
 ## Provisioning response limitation
 
-Onidel's documented 201 response has no defined body schema. The client requires a returned ID or usable `Location` header. If neither is present, it fails without retrying the POST; check the dashboard for a created VM and import it before retrying. When an ID is known but activation fails, the resource retains its ID in Terraform state.
+Onidel's documented 201 response has no defined body schema. The client accepts `instance_id` (the live API response), a direct `id`, or a usable `Location` header; conflicting body identifiers are rejected. If neither is present, it fails without retrying the POST; check the dashboard for a created VM and import it before retrying. When an ID is known but activation fails, the resource retains its ID in Terraform state.

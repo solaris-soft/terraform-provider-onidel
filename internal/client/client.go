@@ -112,18 +112,50 @@ type NewVM struct {
 // VM contains the API fields used by the provider. Password is sensitive and
 // must not be included in diagnostics or logs.
 type VM struct {
-	ID              string  `json:"id"`
-	Name            string  `json:"name"`
-	Password        string  `json:"password"`
-	MainIPv4        string  `json:"main_ipv4"`
-	MainIPv6        string  `json:"main_ipv6"`
-	Template        string  `json:"template"`
-	BootMode        string  `json:"boot_mode"`
-	Status          string  `json:"status"`
-	VCPU            int64   `json:"vcpu"`
-	RAM             int64   `json:"ram"`
-	Disk            int64   `json:"disk"`
-	FirewallGroupID *string `json:"firewall_group_id"`
+	ID                      string  `json:"id"`
+	Name                    string  `json:"name"`
+	Password                string  `json:"password"`
+	MainIPv4                string  `json:"main_ipv4"`
+	MainIPv6                string  `json:"main_ipv6"`
+	Template                string  `json:"template"`
+	BootMode                string  `json:"boot_mode"`
+	Status                  string  `json:"status"`
+	VCPU                    int64   `json:"vcpu"`
+	RAM                     int64   `json:"ram"`
+	Disk                    int64   `json:"disk"`
+	FirewallGroupID         *string `json:"firewall_group_id"`
+	FirewallGroupInternalID *int64  `json:"-"`
+}
+
+// UnmarshalJSON keeps numeric database IDs separate from public firewall UUIDs.
+func (vm *VM) UnmarshalJSON(data []byte) error {
+	type plainVM VM
+	var decoded plainVM
+	wire := struct {
+		*plainVM
+		Firewall json.RawMessage `json:"firewall_group_id"`
+	}{plainVM: &decoded}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return errors.New("onidel: invalid VM response")
+	}
+	raw := bytes.TrimSpace(wire.Firewall)
+	if len(raw) != 0 && !bytes.Equal(raw, []byte("null")) {
+		var uuid string
+		if json.Unmarshal(raw, &uuid) == nil {
+			if !validID(uuid) {
+				return errors.New("onidel: invalid firewall UUID in VM response")
+			}
+			decoded.FirewallGroupID = &uuid
+		} else {
+			id, err := strconv.ParseInt(string(raw), 10, 64)
+			if err != nil || id <= 0 {
+				return errors.New("onidel: invalid numeric firewall ID in VM response")
+			}
+			decoded.FirewallGroupInternalID = &id
+		}
+	}
+	*vm = VM(decoded)
+	return nil
 }
 
 // UpdateVM supports the rename action only.
@@ -229,7 +261,7 @@ func (c *Client) request(ctx context.Context, method string, u *url.URL, input a
 }
 
 // CreateVM sends exactly one POST. The API specification does not define its
-// response schema: we support a direct VM object (including an ID-only object),
+// response schema: we support a direct VM object, an instance_id response,
 // or a Location identifying a VM on the configured API endpoint. No follow-up
 // request is made here. If no trustworthy ID is returned, creation may still
 // have succeeded: callers must reconcile manually, not automatically retry or
@@ -250,16 +282,22 @@ func (c *Client) CreateVM(ctx context.Context, input NewVM) (*VM, error) {
 	// Decode identity independently: optional fields in this undocumented
 	// response must not prevent tracking a successfully provisioned resource.
 	var identity struct {
-		ID string `json:"id"`
+		ID         string `json:"id"`
+		InstanceID string `json:"instance_id"`
 	}
-	if json.Unmarshal(data, &identity) == nil && identity.ID != "" {
-		if !validID(identity.ID) {
+	if json.Unmarshal(data, &identity) == nil && (identity.ID != "" || identity.InstanceID != "") {
+		id := identity.ID
+		if id == "" {
+			id = identity.InstanceID
+		}
+		if !validID(id) || (identity.ID != "" && identity.InstanceID != "" && !strings.EqualFold(identity.ID, identity.InstanceID)) {
 			return nil, errors.New("onidel: creation response contains an invalid VM ID; creation may have succeeded; reconcile manually before retrying")
 		}
 		var vm VM
 		if json.Unmarshal(data, &vm) != nil {
-			return &VM{ID: identity.ID}, nil
+			return &VM{ID: id}, nil
 		}
+		vm.ID = id
 		return &vm, nil
 	}
 	if id := c.locationID(u, location); id != "" {

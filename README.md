@@ -85,7 +85,9 @@ Set the default team in the provider or `ONIDEL_TEAM_ID` before importing a VM b
 
 ## API compatibility
 
-The current [Onidel OpenAPI specification](https://developers.onidel.com/api-reference/virtual-machine/provision-a-new-vm) declares HTTP 201 for provisioning but does **not** specify its response body. The client accepts a VM object/ID or a usable `Location` header. If Onidel returns no discoverable UUID, creation returns an explicit error rather than guessing from a name or retrying a potentially billable POST. Check your Onidel dashboard and import any VM created in that situation before retrying.
+The current [Onidel OpenAPI specification](https://developers.onidel.com/api-reference/virtual-machine/provision-a-new-vm) declares HTTP 201 for provisioning but does **not** specify its response body. The client accepts Onidel's `{"instance_id":"<UUID>"}` response, a VM object with `id`, or a usable `Location` header. Conflicting body identifiers are rejected. If Onidel returns no discoverable UUID, creation returns an explicit error rather than guessing from a name or retrying a potentially billable POST. Check your Onidel dashboard and import any VM created in that situation before retrying.
+
+VM reads can return a numeric firewall database ID instead of the documented UUID. The provider exposes it separately as `firewall_group_internal_id` and retains the configured `firewall_group_id` UUID. A change to an already recorded numeric ID fails the refresh when a UUID is being retained, rather than silently claiming that the configured firewall is still attached. The API does not expose an independent numeric-to-UUID mapping; imports and data sources leave the UUID null when only a number is available. Inspect and reconcile the association explicitly if it changes.
 
 Provisioning waits for the VM to become active. If polling fails after an ID was returned, the provider retains that ID in state so the VM can be refreshed or destroyed. Create-only fields that are absent from GET responses retain their configured values; they cannot all be checked for remote drift.
 

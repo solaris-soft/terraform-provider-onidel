@@ -230,6 +230,11 @@ func TestCreateResponse(t *testing.T) {
 	}{
 		{"direct", `{"id":"` + testID + `","name":"vm"}`, "", true},
 		{"id_only", `{"id":"` + testID + `"}`, "", true},
+		{"live_instance_id", `{"instance_id":"` + testID + `"}`, "", true},
+		{"instance_id_with_incompatible_optional_field", `{"instance_id":"` + testID + `","ram":"4096"}`, "", true},
+		{"matching_identity_fields", `{"id":"` + testID + `","instance_id":"` + testID + `"}`, "", true},
+		{"conflicting_identity_fields", `{"id":"` + testID + `","instance_id":"` + otherID + `"}`, "", false},
+		{"invalid_instance_id", `{"instance_id":"root-secret"}`, "/vm/" + testID, false},
 		{"id_with_incompatible_optional_field", `{"id":"` + testID + `","ram":"4096"}`, "", true},
 		{"root_location", "", "/vm/" + testID, true},
 		{"relative_location", "", "vm/" + testID, true},
@@ -600,4 +605,42 @@ func TestTransportErrorsSanitized(t *testing.T) {
 	})
 	_, err = c.GetVM(context.Background(), testID, "root-secret")
 	assertSanitized(t, err, "root-secret")
+}
+
+func TestGetVMFirewallIdentifiers(t *testing.T) {
+	for _, tc := range []struct {
+		name, value string
+		uuid        *string
+		internalID  *int64
+		wantError   bool
+	}{
+		{name: "uuid", value: `"` + otherID + `"`, uuid: ptr(otherID)},
+		{name: "detached", value: `null`},
+		{name: "numeric", value: `1089`, internalID: func() *int64 { n := int64(1089); return &n }()},
+		{name: "zero", value: `0`, wantError: true},
+		{name: "negative", value: `-1`, wantError: true},
+		{name: "fraction", value: `1.5`, wantError: true},
+		{name: "overflow", value: `9223372036854775808`, wantError: true},
+		{name: "boolean", value: `true`, wantError: true},
+		{name: "object", value: `{}`, wantError: true},
+		{name: "numeric_string", value: `"1089"`, wantError: true},
+		{name: "invalid_uuid", value: `"root-secret"`, wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				fmt.Fprintf(w, `{"id":%q,"firewall_group_id":%s}`, testID, tc.value)
+			})
+			vm, err := c.GetVM(context.Background(), testID, "")
+			if tc.wantError {
+				assertSanitized(t, err, "root-secret")
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(vm.FirewallGroupID, tc.uuid) || !reflect.DeepEqual(vm.FirewallGroupInternalID, tc.internalID) {
+				t.Fatalf("unexpected firewall identity: %#v", vm)
+			}
+		})
+	}
 }

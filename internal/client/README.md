@@ -13,17 +13,24 @@ server reason phrases, or raw transport errors.
 The API specification documents `POST /vm` returning 201, but specifies neither
 a response body nor a `Location` header. `CreateVM` therefore accepts:
 
+- A response with a UUID `instance_id`, as observed from the live API.
 - A direct VM JSON object with a UUID `id`, including an ID-only object. If
   optional fields have incompatible types, the valid ID is still returned.
 - Otherwise, a `Location` resolving to the configured API origin and exactly
   `<base-path>/vm/<UUID>`. Credentials, queries, fragments, encoded paths,
   traversal segments, other origins, and other resources are rejected.
 
-A valid body ID takes precedence over `Location`. The location is only parsed;
+A valid body ID takes precedence over `Location`. When `id` and `instance_id`
+are both present, they must identify the same VM. The location is only parsed;
 it is never fetched. Missing or untrustworthy identity produces an explicit
 error. Creation may already have succeeded even when decoding, transport, or
 cancellation fails. **Reconcile manually before retrying creation.** The client
 never retries POST, lists VMs, or identifies a VM by its name.
+
+Firewall UUID strings and positive numeric internal IDs are decoded into separate
+fields. Numbers are not converted into UUID strings; invalid identifiers and
+unsupported field types are rejected without echoing their values. The resource
+layer retains configured UUIDs and checks numeric-ID continuity on refresh.
 
 `WaitVM` performs an immediate GET and polls every two seconds while status is
 `building` or `restoring`. Only `active` succeeds; all other states return an

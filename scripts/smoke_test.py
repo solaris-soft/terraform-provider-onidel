@@ -45,14 +45,15 @@ def main():
             if self.command == "POST" and path == "/vm":
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 assert body["os"] == 2 and body["cpu"] == 2
+                assert body["firewall_group_id"] == TYPE_ID
                 assert remote["vm"] is None, "provider unexpectedly created twice"
                 remote["vm"] = {
                     "id": VM_ID, "name": body["name"], "password": "mock-secret",
                     "vcpu": body["cpu"], "ram": body["ram"], "disk": body["disk"],
                     "main_ipv4": "192.0.2.10", "main_ipv6": "", "status": "active",
-                    "template": "Ubuntu", "boot_mode": "bios", "firewall_group_id": None,
+                    "template": "Ubuntu", "boot_mode": "bios", "firewall_group_id": 1089,
                 }
-                self.reply(201, {"id": VM_ID})
+                self.reply(201, {"instance_id": VM_ID})
             elif path == f"/vm/{VM_ID}" and self.command == "GET":
                 self.reply(200 if remote["vm"] else 404, remote["vm"])
             elif path == f"/vm/{VM_ID}" and self.command == "PATCH":
@@ -88,7 +89,7 @@ def main():
             env.pop("ONIDEL_TEAM_ID", None)
             config = '''terraform {
   required_providers {
-    onidel = { source = "solaris-soft/onidel" }
+    onidel = { source = "registry.terraform.io/solaris-soft/onidel" }
   }
 }
 provider "onidel" {}
@@ -101,6 +102,7 @@ resource "onidel_virtual_machine" "test" {
   ram = 4096
   disk = 40
   os = 2
+  firewall_group_id = "TYPE"
 }
 '''.replace("TYPE", TYPE_ID)
 
