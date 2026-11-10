@@ -330,7 +330,9 @@ func TestHTTPFailures(t *testing.T) {
 				func() error { _, err := c.GetVM(context.Background(), testID, ""); return err },
 				func() error { return c.UpdateVM(context.Background(), testID, UpdateVM{}) },
 				func() error { return c.DeleteVM(context.Background(), testID) },
-				func() error { _, err := c.WaitVM(context.Background(), testID, ""); return err },
+			}
+			if status != http.StatusNotFound {
+				operations = append(operations, func() error { _, err := c.WaitVM(context.Background(), testID, ""); return err })
 			}
 			for _, op := range operations {
 				err := op()
@@ -452,6 +454,78 @@ func TestWaitVM(t *testing.T) {
 		})
 		_, err := c.WaitVM(context.Background(), testID, "")
 		assertSanitized(t, err)
+	}
+}
+
+func TestWaitVMCreationNotFound(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		statuses []int
+		bodies   []string
+		wantErr  string
+	}{
+		{
+			name:     "not found then building then active",
+			statuses: []int{404, 200, 200},
+			bodies:   []string{"", fmt.Sprintf(`{"id":%q,"status":"building"}`, testID), fmt.Sprintf(`{"id":%q,"status":"active"}`, testID)},
+		},
+		{name: "persistent not found", statuses: []int{404}, wantErr: "context deadline exceeded"},
+		{name: "authentication failure", statuses: []int{404, 401}, wantErr: "HTTP 401"},
+		{name: "authorization failure", statuses: []int{404, 403}, wantErr: "HTTP 403"},
+		{name: "validation failure", statuses: []int{404, 422}, wantErr: "HTTP 422"},
+		{name: "invalid response", statuses: []int{404, 200}, bodies: []string{"", `{"id":"invalid"}`}, wantErr: "invalid VM response"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var posts, gets atomic.Int32
+			c, _ := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/vm" {
+					posts.Add(1)
+					w.WriteHeader(http.StatusCreated)
+					fmt.Fprintf(w, `{"instance_id":%q}`, testID)
+					return
+				}
+				if r.Method != http.MethodGet || r.URL.Path != "/vm/"+testID || r.URL.Query().Get("team_id") != otherID {
+					t.Errorf("unexpected poll: %s %s", r.Method, r.URL)
+					w.WriteHeader(400)
+					return
+				}
+				i := int(gets.Add(1)) - 1
+				if i >= len(tc.statuses) {
+					if tc.name != "persistent not found" {
+						t.Error("retried a completed or non-retryable response")
+					}
+					i = len(tc.statuses) - 1
+				}
+				w.WriteHeader(tc.statuses[i])
+				if i < len(tc.bodies) {
+					io.WriteString(w, tc.bodies[i])
+				}
+			})
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			created, err := c.CreateVM(ctx, NewVM{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			vm, err := c.WaitVM(ctx, created.ID, otherID)
+			if tc.wantErr == "" {
+				if err != nil || vm.ID != testID || vm.Status != "active" {
+					t.Fatalf("wait = %#v, %v", vm, err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("wait error = %v; want %q", err, tc.wantErr)
+			}
+			if tc.name == "persistent not found" {
+				if !errors.Is(err, context.DeadlineExceeded) || gets.Load() < 2 {
+					t.Fatalf("did not retry until timeout: err=%v, GETs=%d", err, gets.Load())
+				}
+			} else if gets.Load() != int32(len(tc.statuses)) {
+				t.Errorf("GETs = %d; want %d", gets.Load(), len(tc.statuses))
+			}
+			if posts.Load() != 1 {
+				t.Errorf("POSTs = %d; want exactly one", posts.Load())
+			}
+		})
 	}
 }
 

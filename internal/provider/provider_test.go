@@ -518,7 +518,7 @@ func TestReplacementPlans(t *testing.T) {
 }
 
 func TestCreateFailures(t *testing.T) {
-	for _, mode := range []string{"post failure", "missing ID", "terminal status", "timeout", "read failure"} {
+	for _, mode := range []string{"post failure", "missing ID", "terminal status", "timeout", "not found timeout", "read failure"} {
 		t.Run(mode, func(t *testing.T) {
 			api, server := newAPI(t)
 			h := configuredHarness(t, server.URL)
@@ -533,6 +533,9 @@ func TestCreateFailures(t *testing.T) {
 				api.vm["status"] = "suspended"
 			case "timeout":
 				api.builds = 100
+				config["create_timeout"] = "50ms"
+			case "not found timeout":
+				api.statuses["GET"] = 404
 				config["create_timeout"] = "50ms"
 			case "read failure":
 				api.statuses["GET"] = 403
@@ -566,6 +569,15 @@ func TestCreateFailures(t *testing.T) {
 			}
 			if posts != 1 {
 				t.Fatalf("created %d times", posts)
+			}
+			if mode == "not found timeout" {
+				foundTimeout := false
+				for _, d := range result.Diagnostics {
+					foundTimeout = foundTimeout || strings.Contains(d.Detail, "context deadline exceeded")
+				}
+				if !foundTimeout {
+					t.Fatal("404 did not wait for the creation timeout")
+				}
 			}
 			for _, d := range result.Diagnostics {
 				if strings.Contains(d.Detail, "creation-secret") || strings.Contains(d.Detail, "remote-secret") {

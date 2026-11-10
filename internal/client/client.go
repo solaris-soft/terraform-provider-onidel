@@ -367,25 +367,28 @@ func (c *Client) DeleteVM(ctx context.Context, id string) error {
 	return err
 }
 
-// WaitVM polls immediately, then every two seconds while building or restoring.
-// Only active is success. Other states fail explicitly rather than polling
-// forever; the caller controls the overall deadline through ctx.
+// WaitVM polls creation immediately, then every two seconds while not found,
+// building or restoring. A newly created VM may not be visible yet (HTTP 404).
+// Only active is success. Other errors and states fail explicitly; the caller
+// controls the overall deadline through ctx.
 func (c *Client) WaitVM(ctx context.Context, id, teamID string) (*VM, error) {
 	for {
 		vm, err := c.GetVM(ctx, id, teamID)
-		if err != nil {
+		if err != nil && !IsNotFound(err) {
 			return nil, err
 		}
-		switch vm.Status {
-		case "active":
-			return vm, nil
-		case "building", "restoring":
-			// Continue below with a cancellable delay.
-		case "suspended", "awaiting_payment", "terminating":
-			return nil, fmt.Errorf("onidel: VM cannot become ready in state %s", vm.Status)
-		default:
-			// Do not echo an unknown status: it could contain credentials.
-			return nil, errors.New("onidel: VM is not active and has an unsupported provisioning state")
+		if err == nil {
+			switch vm.Status {
+			case "active":
+				return vm, nil
+			case "building", "restoring":
+				// Continue below with a cancellable delay.
+			case "suspended", "awaiting_payment", "terminating":
+				return nil, fmt.Errorf("onidel: VM cannot become ready in state %s", vm.Status)
+			default:
+				// Do not echo an unknown status: it could contain credentials.
+				return nil, errors.New("onidel: VM is not active and has an unsupported provisioning state")
+			}
 		}
 		timer := time.NewTimer(c.pollInterval)
 		select {

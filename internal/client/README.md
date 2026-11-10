@@ -32,11 +32,13 @@ fields. Numbers are not converted into UUID strings; invalid identifiers and
 unsupported field types are rejected without echoing their values. The resource
 layer retains configured UUIDs and checks numeric-ID continuity on refresh.
 
-`WaitVM` performs an immediate GET and polls every two seconds while status is
-`building` or `restoring`. Only `active` succeeds; all other states return an
-error. Callers must provide an overall context deadline. Individual requests
-have a 30-second timeout and a 1 MiB response limit. Context cancellation is
-preserved for `errors.Is` checks, including ambiguous creation failures.
+`WaitVM` performs an immediate GET and polls the same UUID every two seconds
+while the API returns 404 (creation visibility delay) or status is `building` or
+`restoring`. Only `active` succeeds; all other errors and states return an error.
+Callers must provide an overall context deadline. Ordinary `GetVM` calls still
+return 404 immediately. Individual requests have a 30-second timeout and a 1 MiB
+response limit. Context cancellation is preserved for `errors.Is` checks,
+including ambiguous creation failures.
 
 Run tests without contacting the paid API:
 
