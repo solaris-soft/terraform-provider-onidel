@@ -22,6 +22,19 @@ goreleaser release --snapshot --clean --skip=sign,publish
 
 Snapshot artifacts under `dist/` are for testing only, not Registry publication. Inspect ZIP contents and checksums. This rehearsal does not validate the real signing key or GitHub permissions.
 
+## Release signing key
+
+The dedicated RSA-3072 release public key is [`keys/onidel-releases.asc`](keys/onidel-releases.asc).
+Its fingerprint is `DBE85CF207F939BAA31CA0639D9438D31DCE5CDE`.
+The private key and passphrase are backed up in the 1Password `Infra` vault as
+`Onidel Terraform provider release signing`; GitHub Actions uses the
+`GPG_PRIVATE_KEY` and `PASSPHRASE` secrets. The key expires in November 2028;
+rotate it before expiry. Do not commit or publish the private backup.
+
+This key signs GitHub release checksums. Its presence does not mean the provider
+or key has been registered with the Terraform Registry. Complete the namespace
+registration below before relying on Registry installation.
+
 ## One-time account and signing setup (manual)
 
 1. In a non-Europe HCP Terraform organization, [create or claim the `solaris-soft` public namespace](https://developer.hashicorp.com/terraform/cloud-docs/users-teams-organizations/organizations/public-namespace). Ensure the publisher is an organization owner or has **Manage public providers** permission. GitHub organization/repository access is also required.
